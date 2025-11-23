@@ -4,8 +4,8 @@
   "description": "MailMind AI backend (ready for Render) - Option A (server uses OpenAI key)",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node app.js",
+    "dev": "nodemon app.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
