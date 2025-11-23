@@ -1,37 +1,64 @@
+// routes/googleAuth.js
 import express from "express";
-import { OAuth2Client } from "google-auth-library";
-import User from "../models/User.js";
+import fetch from "node-fetch";
 import jwt from "jsonwebtoken";
+import User from "../models/User.js";
 
 const router = express.Router();
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || "100486490864-suj02j5vgg15eqr2v281kq8a8fb36gcd.apps.googleusercontent.com");
 
-router.post("/google-login", async (req, res) => {
+// Cria token JWT
+function createToken(user) {
+  return jwt.sign(
+    { id: user._id, email: user.email, plan: user.plan },
+    process.env.JWT_SECRET,
+    { expiresIn: "7d" }
+  );
+}
+
+// Rota usada pela extensão Chrome
+router.post("/google", async (req, res) => {
   try {
-    const { credential } = req.body;
-    if (!credential) return res.status(400).json({ error: "Token Google ausente" });
-    const ticket = await client.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID || "100486490864-suj02j5vgg15eqr2v281kq8a8fb36gcd.apps.googleusercontent.com"
-    });
-    const payload = ticket.getPayload();
-    const email = payload.email;
-    const name = payload.name || payload.email.split('@')[0];
+    const { access_token } = req.body;
+    if (!access_token) return res.status(400).json({ error: "access_token ausente" });
 
-    let user = await User.findOne({ email });
+    // Valida o access_token diretamente com a API do Google
+    const userInfoRes = await fetch(
+      "https://www.googleapis.com/oauth2/v3/userinfo",
+      { headers: { Authorization: `Bearer ${access_token}` } }
+    );
+
+    if (!userInfoRes.ok) {
+      return res.status(401).json({ error: "Token Google inválido ou expirado" });
+    }
+
+    const googleUser = await userInfoRes.json();
+
+    // Busca ou cria usuário
+    let user = await User.findOne({ email: googleUser.email });
     if (!user) {
       user = await User.create({
-        email,
+        email: googleUser.email,
+        name: googleUser.name || googleUser.email.split("@")[0],
+        provider_id: googleUser.sub,
         passwordHash: null,
         plan: "free",
-        credits: 20
+        credits: 20,
+        creditsResetAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       });
     }
-    const token = jwt.sign({ id: user._id, email: user.email, plan: user.plan }, process.env.JWT_SECRET, { expiresIn: "7d" });
-    return res.json({ token, email: user.email, credits: user.credits, plan: user.plan });
+
+    const session_token = createToken(user);
+    const user_profile = {
+      email: user.email,
+      name: user.name || user.email.split("@")[0],
+      credits: user.credits,
+      plan: user.plan,
+    };
+
+    return res.json({ session_token, user: user_profile });
   } catch (err) {
-    console.error("Google login error:", err);
-    return res.status(400).json({ error: "Falha ao autenticar com Google" });
+    console.error("Erro no login Google (extensão):", err);
+    return res.status(500).json({ error: "Erro interno" });
   }
 });
 
