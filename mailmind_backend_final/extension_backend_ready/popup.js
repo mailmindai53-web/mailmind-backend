@@ -1,11 +1,4 @@
-// No onclick do loginBtn, adicione isso no início:
-loginBtn.onclick = () => {
-  loginBtn.textContent = "Abrindo login..."; // ← Feedback
-  chrome.runtime.sendMessage({ type:"login" }, async (res) => {
-    loginBtn.textContent = "Entrar com Google"; // ← Reset
-    // ... resto igual
-  });
-};
+
 
 // Função para buscar os créditos atualizados do backend
 async function atualizarCreditos() {
@@ -40,3 +33,32 @@ chrome.runtime.onMessage.addListener((msg) => {
     atualizarCreditos();
   }
 });
+
+
+// ... (resto igual)
+
+// No final do popup.js, adicione isso:
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "LOGIN_SUCCESS") {
+    // Recarrega o popup pra mostrar UI logada
+    window.location.reload();
+  }
+});
+
+// No onclick do loginBtn:
+loginBtn.onclick = () => {
+  loginBtn.textContent = "Abrindo login...";
+  loginBtn.disabled = true;
+  chrome.runtime.sendMessage({ type: "login" }, async (res) => {
+    loginBtn.textContent = "Entrar com Google";
+    loginBtn.disabled = false;
+    if (res.fallback) {
+      alert(res.message); // Feedback pro usuário
+    } else if (res.error) {
+      alert("Falha: " + res.error);
+    } else if (res.ok) {
+      // Sucesso — recarrega
+      window.location.reload();
+    }
+  });
+};
