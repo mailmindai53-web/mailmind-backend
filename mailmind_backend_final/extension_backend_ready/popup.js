@@ -45,20 +45,20 @@ chrome.runtime.onMessage.addListener((msg) => {
   }
 });
 
-// No onclick do loginBtn:
 loginBtn.onclick = () => {
-  loginBtn.textContent = "Abrindo login...";
+  loginBtn.textContent = "Abrindo Google...";
   loginBtn.disabled = true;
-  chrome.runtime.sendMessage({ type: "login" }, async (res) => {
+
+  chrome.runtime.sendMessage({ type: "login" }, (res) => {
     loginBtn.textContent = "Entrar com Google";
     loginBtn.disabled = false;
-    if (res.fallback) {
-      alert(res.message); // Feedback pro usuário
-    } else if (res.error) {
-      alert("Falha: " + res.error);
-    } else if (res.ok) {
-      // Sucesso — recarrega
-      window.location.reload();
+
+    if (res?.error) {
+      alert("Erro: " + res.error);
+    }
+    // Se sucesso, o popup vai recarregar automaticamente pelo listener
+  });
+};
     }
   });
 };
