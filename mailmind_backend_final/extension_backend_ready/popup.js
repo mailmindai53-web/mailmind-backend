@@ -1,3 +1,12 @@
+// No onclick do loginBtn, adicione isso no início:
+loginBtn.onclick = () => {
+  loginBtn.textContent = "Abrindo login..."; // ← Feedback
+  chrome.runtime.sendMessage({ type:"login" }, async (res) => {
+    loginBtn.textContent = "Entrar com Google"; // ← Reset
+    // ... resto igual
+  });
+};
+
 // Função para buscar os créditos atualizados do backend
 async function atualizarCreditos() {
   try {
