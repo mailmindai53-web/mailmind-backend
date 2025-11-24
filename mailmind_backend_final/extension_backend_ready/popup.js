@@ -1,64 +1,64 @@
+// popup.js — botão bonito + feedback + login perfeito
 
+const loginBtn = document.getElementById("login-btn");
+const loginSection = document.getElementById("login-section");
+const userInfo = document.getElementById("user-info");
+const userNameEl = document.getElementById("user-name");
+const creditsEl = document.getElementById("credits-count");
+const logoutBtn = document.getElementById("logout-btn");
 
-// Função para buscar os créditos atualizados do backend
-async function atualizarCreditos() {
-  try {
-    const result = await chrome.storage.local.get(["session_token"]);
-    if (!result.session_token) return;
-
-    const res = await fetch("https://mailmind-backend-09hd.onrender.com/api/auth/me", {
-      headers: {
-        "Authorization": "Bearer " + result.session_token
-      }
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      const creditsElement = document.getElementById("credits-count"); // ajuste o ID se for diferente
-      if (creditsElement) {
-        creditsElement.textContent = data.user.credits;
-      }
-    }
-  } catch (err) {
-    console.log("Não conseguiu atualizar créditos");
-  }
+function showLoggedIn(user) {
+  loginSection.classList.add("hidden");
+  userInfo.classList.remove("hidden");
+  userNameEl.textContent = user.name || user.email.split("@")[0];
+  creditsEl.textContent = user.credits;
 }
 
-// Roda quando abre o popup
-document.addEventListener("DOMContentLoaded", atualizarCreditos);
+function showLogin() {
+  loginSection.classList.remove("hidden");
+  userInfo.classList.add("hidden");
+}
 
-// Roda toda vez que o usuário clica no popup (atualiza em tempo real)
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "CREDITS_UPDATED") {
-    atualizarCreditos();
+// Carrega sessão ao abrir
+chrome.runtime.sendMessage({ type: "get_session" }, (res) => {
+  if (res?.user_profile) {
+    showLoggedIn(res.user_profile);
   }
 });
 
-
-// ... (resto igual)
-
-// No final do popup.js, adicione isso:
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "LOGIN_SUCCESS") {
-    // Recarrega o popup pra mostrar UI logada
-    window.location.reload();
-  }
-});
-
+// Botão de login com efeito lindo
 loginBtn.onclick = () => {
-  loginBtn.textContent = "Abrindo Google...";
-  loginBtn.disabled = true;
+  loginBtn.classList.add("loading");
+  loginBtn.innerHTML = `
+    <img src="https://www.google.com/favicon.ico" alt="G">
+    Abrindo login...
+  `;
 
-  chrome.runtime.sendMessage({ type: "login" }, (res) => {
-    loginBtn.textContent = "Entrar com Google";
-    loginBtn.disabled = false;
+  chrome.runtime.sendMessage({ type: "login" }, (response) => {
+    loginBtn.classList.remove("loading");
+    loginBtn.innerHTML = `
+      <img src="https://www.google.com/favicon.ico" alt="G">
+      Entrar com Google
+    `;
 
-    if (res?.error) {
-      alert("Erro: " + res.error);
+    if (response?.ok) {
+      showLoggedIn(response.user);
+    } else if (response?.error) {
+      alert("Erro: " + response.error);
     }
-    // Se sucesso, o popup vai recarregar automaticamente pelo listener
   });
 };
-    }
+
+// Logout
+logoutBtn.onclick = () => {
+  chrome.runtime.sendMessage({ type: "logout" }, () => {
+    showLogin();
   });
 };
+
+// Atualiza créditos em tempo real (se precisar)
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "LOGIN_SUCCESS" && msg.user) {
+    showLoggedIn(msg.user);
+  }
+});
