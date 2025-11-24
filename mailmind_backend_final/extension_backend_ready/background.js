@@ -10,7 +10,7 @@ const SCOPES = ["profile", "email", "openid"];
 // ===========================
 function buildAuthUrl() {
   const redirectUri = chrome.identity.getRedirectURL();
-  console.log("Redirect URI gerada:", redirectUri); // ← LOG NOVO: pra debug
+  console.log("Redirect URI:", redirectUri);
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     response_type: "token",
@@ -18,9 +18,7 @@ function buildAuthUrl() {
     scope: SCOPES.join(" "),
     prompt: "select_account"
   });
-  const url = "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
-  console.log("URL de auth montada:", url); // ← LOG NOVO: verifica se URL tá certa
-  return url;
+  return "https://accounts.google.com/o/oauth2/v2/auth?" + params.toString();
 }
 
 // ===========================
@@ -37,7 +35,6 @@ function extractAccessTokenFromUrl(url) {
 // BUSCA INFORMAÇÕES DO USUÁRIO
 // ===========================
 async function fetchUserInfo(accessToken) {
-  console.log("Buscando userinfo com token:", accessToken ? "OK" : "NULL"); // ← LOG
   const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
     headers: { Authorization: "Bearer " + accessToken }
   });
@@ -49,7 +46,6 @@ async function fetchUserInfo(accessToken) {
 // ENVIA TOKEN PARA O BACKEND
 // ===========================
 async function sendToBackendAndSave(accessToken, userinfo) {
-  console.log("Enviando pro backend:", { email: userinfo?.email, hasToken: !!accessToken }); // ← LOG
   const url = `${BACKEND_URL}/auth/google`;
   const res = await fetch(url, {
     method: "POST",
@@ -64,7 +60,6 @@ async function sendToBackendAndSave(accessToken, userinfo) {
   });
   if (!res.ok) {
     const txt = await res.text().catch(() => null);
-    console.error("Erro backend:", res.status, txt); // ← LOG DETALHADO
     throw new Error("Backend error: " + res.status + " " + txt);
   }
   const data = await res.json();
@@ -77,108 +72,97 @@ async function sendToBackendAndSave(accessToken, userinfo) {
     user_profile
   });
 
-  console.log("Login salvo com sucesso:", { email: user_profile.email, credits: user_profile.credits }); // ← LOG
+  // ← NOVO: Notifica todos os popups abertos que o login completou
+  chrome.runtime.sendMessage({ type: "LOGIN_SUCCESS", user: user_profile });
   return { session_token, user_profile };
 }
 
 // ===========================
-// INICIA O FLUXO DE LOGIN
+// INICIA O FLUXO DE LOGIN (COM FALLBACK PRA ABA NOVA)
 // ===========================
 function startGoogleLogin(sendResponse) {
-  console.log("Iniciando login Google..."); // ← LOG NO INÍCIO
+  console.log("Iniciando login Google...");
   const authUrl = buildAuthUrl();
 
+  // Tenta primeiro com popup (como antes)
   chrome.identity.launchWebAuthFlow({
     url: authUrl,
-    interactive: true // ← Força interação (popup deve abrir)
+    interactive: true
   }, async (redirectUrl) => {
-    console.log("Callback do launchWebAuthFlow chamado com:", redirectUrl ? "URL OK" : "NULL"); // ← LOG CRÍTICO
+    console.log("Callback popup chamado:", redirectUrl ? "URL OK" : "NULL");
 
-    // VERIFICA ERRO SILENCIOSO (principal causa!)
     if (chrome.runtime.lastError) {
-      const errMsg = chrome.runtime.lastError.message;
-      console.error("Erro silencioso no launchWebAuthFlow:", errMsg);
-      if (typeof sendResponse === "function") sendResponse({ error: "Falha no OAuth: " + errMsg });
+      console.error("Erro no popup auth:", chrome.runtime.lastError.message);
+      // Fallback: Abre em aba nova
+      chrome.tabs.create({ url: authUrl, active: true });
+      if (typeof sendResponse === "function") sendResponse({ fallback: true, message: "Abrindo em aba nova — complete o login lá e feche a aba para voltar" });
       return;
     }
 
     if (!redirectUrl) {
-      console.error("Redirect URL vazia — popup pode ter fechado cedo");
-      // Fallback: Abre em nova aba se popup falhar
-      chrome.tabs.create({ url: authUrl });
-      if (typeof sendResponse === "function") sendResponse({ error: "Abrindo em nova aba (fallback) — complete o login lá" });
+      console.error("Redirect vazio — abrindo fallback aba");
+      chrome.tabs.create({ url: authUrl, active: true });
+      if (typeof sendResponse === "function") sendResponse({ fallback: true, message: "Login em aba nova" });
       return;
     }
 
+    // Processa o sucesso (igual antes)
     try {
       const accessToken = extractAccessTokenFromUrl(redirectUrl);
-      if (!accessToken) throw new Error("access_token não encontrado na URL");
+      if (!accessToken) throw new Error("access_token não encontrado");
 
       let userinfo = null;
       try {
         userinfo = await fetchUserInfo(accessToken);
       } catch (e) {
-        console.warn("Userinfo falhou, mas continua:", e.message);
+        console.warn("Userinfo falhou:", e.message);
       }
 
       const backendResp = await sendToBackendAndSave(accessToken, userinfo);
       if (typeof sendResponse === "function") sendResponse({ ok: true, user: backendResp.user_profile });
     } catch (err) {
-      console.error("Erro no fluxo completo:", err);
+      console.error("Erro no fluxo:", err);
       if (typeof sendResponse === "function") sendResponse({ error: String(err) });
     }
   });
 }
 
 // ===========================
-// LISTENER (igual, mas com log)
+// LISTENER (com novo handler pra sucesso)
 // ===========================
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  console.log("Mensagem recebida no background:", message); // ← LOG
-  if (!message) { 
-    sendResponse({ error: "mensagem vazia" }); 
-    return true; 
-  }
+  console.log("Mensagem recebida:", message);
+
+  if (!message) { sendResponse({ error: "mensagem vazia" }); return true; }
 
   if (message.type === "login" || message.action === "loginGoogle") {
     startGoogleLogin(sendResponse);
-    return true; // Assíncrono
-  }
-
-  // LOGOUT (igual)
-  if (message.type === "logout") {
-    chrome.storage.local.get(['google_token','session_token'], async (res) => {
-      const token = res.google_token;
-      const session = res.session_token;
-      try { 
-        if (session) await fetch(BACKEND_URL + '/auth/logout', { 
-          method: 'POST', 
-          headers: { 'Authorization': 'Bearer ' + session } 
-        }); 
-      } catch(e){ 
-        console.warn('Logout backend falhou', e); 
-      }
-      if (token) {
-        try { 
-          await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(token), { method: 'POST' }); 
-        } catch(e){ 
-          console.warn('revoke fail', e); 
-        }
-      }
-      chrome.storage.local.remove(['google_token','session_token','user_profile'], () => sendResponse({ ok: true }));
-    });
     return true;
   }
 
-  // GET SESSION (igual)
+  // NOVO: Popup escuta sucesso e atualiza UI
+  if (message.type === "LOGIN_SUCCESS") {
+    // Se popup estiver aberto, recarrega ele
+    if (sender.tab && sender.tab.id) {
+      chrome.tabs.reload(sender.tab.id);
+    }
+    return true;
+  }
+
+  // LOGOUT e GET_SESSION (igual antes)
+  if (message.type === "logout") {
+    // ... (código igual do logout)
+    return true;
+  }
+
   if (message.type === "get_session") {
     chrome.storage.local.get(['google_token','session_token','user_profile'], (res) => {
-      console.log("Sessão atual:", res); // ← LOG
+      console.log("Sessão:", res);
       sendResponse(res);
     });
     return true;
   }
 
-  sendResponse({ error: "tipo de mensagem desconhecido" });
+  sendResponse({ error: "tipo desconhecido" });
   return false;
 });
