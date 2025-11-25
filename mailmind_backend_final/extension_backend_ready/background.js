@@ -47,3 +47,15 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
     chrome.runtime.sendMessage({ type: "REFRESH_POPUP" });
   }
 });
+
+// ======= LOGOUT 100% FUNCIONAL =======
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.type === "logout") {
+    chrome.storage.local.clear(() => {
+      sendResponse({ ok: true });
+      chrome.runtime.sendMessage({ type: "REFRESH_POPUP" });
+    });
+    return true;
+  }
+  return false;
+});
