@@ -26,4 +26,11 @@ document.querySelector("#user button").onclick = () => {
 // Atualiza se logar em outra aba
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === "REFRESH_POPUP") location.reload();
+
+  // Atualiza o popup quando o background mandar
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "REFRESH_POPUP") {
+    location.reload();
+  }
+});
 });
