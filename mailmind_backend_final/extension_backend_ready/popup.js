@@ -1,36 +1,36 @@
-// popup/popup.js — LOGOUT 100% FUNCIONAL
+// popup.js — LOGOUT FUNCIONA 100%
 
-document.getElementById("loginBtn").onclick = () => {
-  const btn = document.getElementById("loginBtn");
-  btn.disabled = true;
-  btn.innerHTML = "Abrindo Google...";
-  chrome.runtime.sendMessage({ type: "login" });
+const loginBtn = document.getElementById("loginBtn");
+const loginArea = document.getElementById("loginArea");
+const appArea = document.getElementById("appArea");
+const userInfo = document.getElementById("userInfo");
+const logoutBtn = document.getElementById("logoutBtn");
+
+async function getSession() {
+  return new Promise(resolve => chrome.runtime.sendMessage({ type: "get_session" }, resolve));
+}
+
+loginBtn.onclick = () => {
+  loginBtn.textContent = "Abrindo login...";
+  chrome.runtime.sendMessage({ type: "login" }, async (res) => {
+    loginBtn.textContent = "Entrar com Google";
+    if (res.error) alert("Erro: " + res.error);
+    if (res.fallback) alert(res.message);
+    if (res.ok) location.reload();
+  });
 };
 
-chrome.runtime.sendMessage({ type: "get_session" }, (res) => {
-  if (res?.user_profile) {
-    document.getElementById("login").classList.add("hidden");
-    document.getElementById("user").classList.remove("hidden");
-    document.getElementById("name").textContent = res.user_profile.name || res.user_profile.email;
-    document.getElementById("credits").textContent = res.user_profile.credits ?? 0;
-  }
-});
-
-// BOTÃO DE SAIR — FUNCIONA NA HORA
-document.querySelector("#user button").onclick = () => {
+logoutBtn.onclick = () => {
   chrome.runtime.sendMessage({ type: "logout" }, () => {
     location.reload();
   });
 };
 
-// Atualiza se logar em outra aba
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "REFRESH_POPUP") location.reload();
-
-  // Atualiza o popup quando o background mandar
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "REFRESH_POPUP") {
-    location.reload();
+// Carrega sessão ao abrir
+getSession().then(s => {
+  if (s.user_profile) {
+    loginArea.classList.add("hidden");
+    appArea.classList.remove("hidden");
+    userInfo.textContent = s.user_profile.name + " (" + s.user_profile.email + ")";
   }
-});
 });
