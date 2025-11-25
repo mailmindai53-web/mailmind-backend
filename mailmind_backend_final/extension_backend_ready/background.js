@@ -1,22 +1,71 @@
-// background.js — VERSÃO FINAL 100% LIMPA (NENHUM launchWebAuthFlow)
+// background.js — VERSÃO FINAL NATIVA DO CHROME (SEM MISMATCH, LOGOUT FUNCIONA)
 
 const CLIENT_ID = "100486490864-t2anvobl2aig0uo0al6hkckpfk0i64on.apps.googleusercontent.com";
-const REDIRECT_URI = "https://mailmind-backend-09hd.onrender.com/auth/google/callback";
+const BACKEND_URL = "https://mailmind-backend-09hd.onrender.com";
+const SCOPES = "openid email profile";
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-
   if (msg.type === "login") {
-    const verifier = crypto.randomUUID().replace(/-/g, "").substring(0, 43);
-    
-    crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
-      .then(buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
-        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""))
-      .then(challenge => {
-        const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=openid%20email%20profile&code_challenge=${challenge}&code_challenge_method=S256&state=${btoa(verifier)}`;
-        chrome.tabs.create({ url, active: true });
-        sendResponse({ ok: true });
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      `client_id=${CLIENT_ID}` +
+      `&response_type=token` +
+      `&redirect_uri=${chrome.identity.getRedirectURL()}` +
+      `&scope=${SCOPES}` +
+      `&prompt=select_account`;
+
+    chrome.identity.launchWebAuthFlow({
+      url: authUrl,
+      interactive: true
+    }, (redirectUrl) => {
+      if (chrome.runtime.lastError) {
+        console.error("Erro OAuth:", chrome.runtime.lastError.message);
+        // Fallback: abre em aba nova
+        chrome.tabs.create({ url: authUrl });
+        sendResponse({ error: "Popup bloqueado — complete em aba nova" });
+        return;
+      }
+
+      if (!redirectUrl) {
+        sendResponse({ error: "Login cancelado" });
+        return;
+      }
+
+      // Extrai token do redirect
+      const params = new URLSearchParams(redirectUrl.split('#')[1]);
+      const accessToken = params.get('access_token');
+
+      if (!accessToken) {
+        sendResponse({ error: "Token não encontrado" });
+        return;
+      }
+
+      // Busca userinfo
+      fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+        headers: { Authorization: `Bearer ${accessToken}` }
       })
-      .catch(err => sendResponse({ error: err.message }));
+      .then(res => res.json())
+      .then(userinfo => {
+        // Manda pro backend
+        fetch(`${BACKEND_URL}/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            access_token: accessToken,
+            email: userinfo.email,
+            name: userinfo.name,
+            provider_id: userinfo.sub
+          })
+        })
+        .then(res => res.json())
+        .then(data => {
+          chrome.storage.local.set({
+            user_profile: data.user,
+            session_token: data.session_token
+          });
+          sendResponse({ ok: true, user: data.user });
+        })
+        .catch(err => sendResponse({ error: "Backend falhou: " + err.message }));
+    });
 
     return true;
   }
@@ -28,19 +77,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg.type === "logout") {
     chrome.storage.local.clear(() => {
+      console.log("LOGOUT: Storage limpo");
       sendResponse({ ok: true });
-      chrome.runtime.sendMessage({ type: "REFRESH" }).catch(() => {});
+      chrome.runtime.sendMessage({ type: "REFRESH_POPUP" });
     });
     return true;
   }
 
   return false;
-});
-
-chrome.runtime.onMessageExternal.addListener((msg) => {
-  if (msg.type === "LOGIN_SUCCESS" && msg.user) {
-    chrome.storage.local.set({ user_profile: msg.user }, () => {
-      chrome.runtime.sendMessage({ type: "REFRESH" });
-    });
-  }
 });
