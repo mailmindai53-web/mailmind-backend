@@ -1,63 +1,27 @@
-// popup.js — botão bonito + feedback + login perfeito
+// popup/popup.js
+document.getElementById("loginBtn").onclick = () => {
+  const btn = document.getElementById("loginBtn");
+  btn.innerHTML = "Abrindo Google...";
+  btn.disabled = true;
+  chrome.runtime.sendMessage({ type: "login" }, () => {
+    setTimeout(() => {
+      btn.innerHTML = '<img src="https://www.google.com/favicon.ico" width="20"> Entrar com Google';
+      btn.disabled = false;
+    }, 3000);
+  });
+};
 
-const loginBtn = document.getElementById("login-btn");
-const loginSection = document.getElementById("login-section");
-const userInfo = document.getElementById("user-info");
-const userNameEl = document.getElementById("user-name");
-const creditsEl = document.getElementById("credits-count");
-const logoutBtn = document.getElementById("logout-btn");
-
-function showLoggedIn(user) {
-  loginSection.classList.add("hidden");
-  userInfo.classList.remove("hidden");
-  userNameEl.textContent = user.name || user.email.split("@")[0];
-  creditsEl.textContent = user.credits;
-}
-
-function showLogin() {
-  loginSection.classList.remove("hidden");
-  userInfo.classList.add("hidden");
-}
-
-// Carrega sessão ao abrir
+// Carrega usuário
 chrome.runtime.sendMessage({ type: "get_session" }, (res) => {
   if (res?.user_profile) {
-    showLoggedIn(res.user_profile);
+    document.getElementById("login").classList.add("hidden");
+    document.getElementById("user").classList.remove("hidden");
+    document.getElementById("name").textContent = res.user_profile.name || res.user_profile.email;
+    document.getElementById("credits").textContent = res.user_profile.credits;
   }
 });
 
-// Botão de login com efeito lindo
-loginBtn.onclick = () => {
-  loginBtn.classList.add("loading");
-  loginBtn.innerHTML = `
-    <img src="https://www.google.com/favicon.ico" alt="G">
-    Abrindo login...
-  `;
-
-  chrome.runtime.sendMessage({ type: "login" }, (response) => {
-    loginBtn.classList.remove("loading");
-    loginBtn.innerHTML = `
-      <img src="https://www.google.com/favicon.ico" alt="G">
-      Entrar com Google
-    `;
-
-    if (response?.ok) {
-      showLoggedIn(response.user);
-    } else if (response?.error) {
-      alert("Erro: " + response.error);
-    }
-  });
-};
-
-loginBtn.onclick = () => {
-  loginBtn.innerHTML = `<img src="https://www.google.com/favicon.ico"> Abrindo Google...`;
-  loginBtn.disabled = true;
-
-  chrome.runtime.sendMessage({ type: "login" }, (resp) => {
-    // Não precisa fazer nada aqui — a aba abre sozinha
-    setTimeout(() => {
-      loginBtn.innerHTML = `<img src="https://www.google.com/favicon.ico"> Entrar com Google`;
-      loginBtn.disabled = false;
-    }, 2000);
-  });
-};
+// Atualiza se logar em outra aba
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "REFRESH_POPUP") location.reload();
+});
