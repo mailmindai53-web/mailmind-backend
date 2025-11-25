@@ -1,36 +1,46 @@
-// popup/popup.js — LOGOUT 100% FUNCIONAL
+// background.js — VERSÃO FINAL 100% LIMPA (NENHUM launchWebAuthFlow)
 
-document.getElementById("loginBtn").onclick = () => {
-  const btn = document.getElementById("loginBtn");
-  btn.disabled = true;
-  btn.innerHTML = "Abrindo Google...";
-  chrome.runtime.sendMessage({ type: "login" });
-};
+const CLIENT_ID = "100486490864-t2anvobl2aig0uo0al6hkckpfk0i64on.apps.googleusercontent.com";
+const REDIRECT_URI = "https://mailmind-backend-09hd.onrender.com/auth/google/callback";
 
-chrome.runtime.sendMessage({ type: "get_session" }, (res) => {
-  if (res?.user_profile) {
-    document.getElementById("login").classList.add("hidden");
-    document.getElementById("user").classList.remove("hidden");
-    document.getElementById("name").textContent = res.user_profile.name || res.user_profile.email;
-    document.getElementById("credits").textContent = res.user_profile.credits ?? 0;
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+
+  if (msg.type === "login") {
+    const verifier = crypto.randomUUID().replace(/-/g, "").substring(0, 43);
+    
+    crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
+      .then(buf => btoa(String.fromCharCode(...new Uint8Array(buf)))
+        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""))
+      .then(challenge => {
+        const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=openid%20email%20profile&code_challenge=${challenge}&code_challenge_method=S256&state=${btoa(verifier)}`;
+        chrome.tabs.create({ url, active: true });
+        sendResponse({ ok: true });
+      })
+      .catch(err => sendResponse({ error: err.message }));
+
+    return true;
   }
+
+  if (msg.type === "get_session") {
+    chrome.storage.local.get(["user_profile"], sendResponse);
+    return true;
+  }
+
+  if (msg.type === "logout") {
+    chrome.storage.local.clear(() => {
+      sendResponse({ ok: true });
+      chrome.runtime.sendMessage({ type: "REFRESH" }).catch(() => {});
+    });
+    return true;
+  }
+
+  return false;
 });
 
-// BOTÃO DE SAIR — FUNCIONA NA HORA
-document.querySelector("#user button").onclick = () => {
-  chrome.runtime.sendMessage({ type: "logout" }, () => {
-    location.reload();
-  });
-};
-
-// Atualiza se logar em outra aba
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "REFRESH_POPUP") location.reload();
-
-  // Atualiza o popup quando o background mandar
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "REFRESH_POPUP") {
-    location.reload();
+chrome.runtime.onMessageExternal.addListener((msg) => {
+  if (msg.type === "LOGIN_SUCCESS" && msg.user) {
+    chrome.storage.local.set({ user_profile: msg.user }, () => {
+      chrome.runtime.sendMessage({ type: "REFRESH" });
+    });
   }
-});
 });
