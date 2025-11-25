@@ -49,16 +49,15 @@ loginBtn.onclick = () => {
   });
 };
 
-// Logout
-logoutBtn.onclick = () => {
-  chrome.runtime.sendMessage({ type: "logout" }, () => {
-    showLogin();
+loginBtn.onclick = () => {
+  loginBtn.innerHTML = `<img src="https://www.google.com/favicon.ico"> Abrindo Google...`;
+  loginBtn.disabled = true;
+
+  chrome.runtime.sendMessage({ type: "login" }, (resp) => {
+    // Não precisa fazer nada aqui — a aba abre sozinha
+    setTimeout(() => {
+      loginBtn.innerHTML = `<img src="https://www.google.com/favicon.ico"> Entrar com Google`;
+      loginBtn.disabled = false;
+    }, 2000);
   });
 };
-
-// Atualiza créditos em tempo real (se precisar)
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg.type === "LOGIN_SUCCESS" && msg.user) {
-    showLoggedIn(msg.user);
-  }
-});
