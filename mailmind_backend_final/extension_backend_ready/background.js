@@ -1,4 +1,4 @@
-// background.js — VERSÃO FINAL NATIVA DO CHROME (SEM MISMATCH, LOGOUT FUNCIONA)
+// background.js — VERSÃO 2025 COM FALLBACK E LOGOUT FIX
 
 const CLIENT_ID = "100486490864-t2anvobl2aig0uo0al6hkckpfk0i64on.apps.googleusercontent.com";
 const BACKEND_URL = "https://mailmind-backend-09hd.onrender.com";
@@ -6,22 +6,29 @@ const SCOPES = "openid email profile";
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "login") {
+    const redirectUri = chrome.identity.getRedirectURL();
+    console.log("Redirect URI:", redirectUri); // Debug
+
     const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${CLIENT_ID}` +
-      `&response_type=token` +
-      `&redirect_uri=${chrome.identity.getRedirectURL()}` +
-      `&scope=${SCOPES}` +
-      `&prompt=select_account`;
+      `client_id=${CLIENT_ID}&` +
+      `response_type=token&` +
+      `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+      `scope=${SCOPES}&` +
+      `prompt=select_account`;
+
+    console.log("Auth URL:", authUrl); // Debug
 
     chrome.identity.launchWebAuthFlow({
       url: authUrl,
       interactive: true
     }, (redirectUrl) => {
+      console.log("Redirect URL recebida:", redirectUrl); // Debug
+
       if (chrome.runtime.lastError) {
         console.error("Erro OAuth:", chrome.runtime.lastError.message);
         // Fallback: abre em aba nova
-        chrome.tabs.create({ url: authUrl });
-        sendResponse({ error: "Popup bloqueado — complete em aba nova" });
+        chrome.tabs.create({ url: authUrl, active: true });
+        sendResponse({ fallback: true, message: "Login em aba nova" });
         return;
       }
 
@@ -30,7 +37,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
-      // Extrai token do redirect
       const params = new URLSearchParams(redirectUrl.split('#')[1]);
       const accessToken = params.get('access_token');
 
@@ -39,13 +45,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return;
       }
 
-      // Busca userinfo
+      // Userinfo
       fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
         headers: { Authorization: `Bearer ${accessToken}` }
       })
       .then(res => res.json())
       .then(userinfo => {
-        // Manda pro backend
+        // Backend
         fetch(`${BACKEND_URL}/auth/google`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -63,8 +69,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             session_token: data.session_token
           });
           sendResponse({ ok: true, user: data.user });
+          chrome.runtime.sendMessage({ type: "REFRESH_POPUP" });
         })
-        .catch(err => sendResponse({ error: "Backend falhou: " + err.message }));
+        .catch(err => sendResponse({ error: "Backend: " + err.message }));
     });
 
     return true;
