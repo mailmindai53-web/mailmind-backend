@@ -1,21 +1,21 @@
 {
   "manifest_version": 3,
-  "name": "MailMind Login + IA",
-  "version": "2.0.1",
-  "description": "Extens\u00e3o com login Google e IA.",
-  "permissions": [
-    "identity",
-    "storage"
-  ],
-  "host_permissions": [
-    "https://www.googleapis.com/*",
-    "https://oauth2.googleapis.com/*",
-    "https://mailmind-backend-09hd.onrender.com/*"
-  ],
+  "name": "MailMind AI",
+  "version": "1.0",
+  "description": "Gera e-mails com IA direto no Gmail",
+  "icons": { "128": "icon.png" },
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup/popup.html"
   },
   "background": {
     "service_worker": "background.js"
+  },
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://mailmind-backend-09hd.onrender.com/*",
+    "https://accounts.google.com/*"
+  ],
+  "externally_connectable": {
+    "matches": ["https://mailmind-backend-09hd.onrender.com/*"]
   }
 }
