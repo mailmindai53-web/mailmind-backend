@@ -1,22 +1,17 @@
-document.getElementById('loginBtn')?.addEventListener('click', () => {
-  chrome.runtime.sendMessage({action: 'login'});
+document.getElementById('sairBtn').addEventListener('click', () => {
+  chrome.runtime.sendMessage({action: 'SAIR_TOTAL'});
 });
 
-document.getElementById('logoutBtn')?.addEventListener('click', () => {
-  chrome.runtime.sendMessage({action: 'realLogout'});
-});
-
-function updateUI() {
-  chrome.storage.sync.get(['token'], r => {
-    if (r.token) {
-      document.getElementById('loginBtn')?.style = 'display:none';
-      document.getElementById('logoutBtn')?.style = 'display:block';
+// atualiza créditos e esconde/mostra coisas
+function refresh() {
+  chrome.storage.sync.get(['token', 'credits'], data => {
+    if (data.token) {
+      document.getElementById('num').textContent = data.credits || 0;
     } else {
-      document.getElementById('loginBtn')?.style = 'display:block';
-      document.getElementById('logoutBtn')?.style = 'display:none';
+      document.getElementById('num').textContent = 0;
     }
   });
 }
 
-chrome.storage.onChanged.addListener(updateUI);
-updateUI();
+chrome.storage.onChanged.addListener(refresh);
+refresh();
