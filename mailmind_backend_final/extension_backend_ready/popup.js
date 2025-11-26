@@ -1,25 +1,22 @@
-const loginBtn = document.getElementById('loginBtn');
-const logoutBtn = document.getElementById('logoutBtn');
+document.getElementById('loginBtn')?.addEventListener('click', () => {
+  chrome.runtime.sendMessage({action: 'login'});
+});
+
+document.getElementById('logoutBtn')?.addEventListener('click', () => {
+  chrome.runtime.sendMessage({action: 'realLogout'});
+});
 
 function updateUI() {
-  chrome.storage.sync.get(['token'], (result) => {
-    if (result.token) {
-      loginBtn.style.display = 'none';
-      logoutBtn.style.display = 'block';
+  chrome.storage.sync.get(['token'], r => {
+    if (r.token) {
+      document.getElementById('loginBtn')?.style = 'display:none';
+      document.getElementById('logoutBtn')?.style = 'display:block';
     } else {
-      loginBtn.style.display = 'block';
-      logoutBtn.style.display = 'none';
+      document.getElementById('loginBtn')?.style = 'display:block';
+      document.getElementById('logoutBtn')?.style = 'display:none';
     }
   });
 }
-
-loginBtn.onclick = () => {
-  chrome.runtime.sendMessage({action: 'login'});
-};
-
-logoutBtn.onclick = () => {
-  chrome.runtime.sendMessage({action: 'logout'});
-};
 
 chrome.storage.onChanged.addListener(updateUI);
 updateUI();
