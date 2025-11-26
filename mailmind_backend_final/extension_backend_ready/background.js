@@ -1,30 +1,32 @@
 const CLIENT_ID = 'SEU_CLIENT_ID.apps.googleusercontent.com';
-const REDIRECT_URI = `https://${chrome.runtime.id}/oauth2`;
+const REDIRECT = `https://${chrome.runtime.id}/oauth2`;
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((msg, _, sendResponse) => {
   if (msg.action === 'login') {
     chrome.identity.launchWebAuthFlow({
-      url: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=openid%20email%20profile`,
+      url: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT)}&scope=openid%20email%20profile`,
       interactive: true
-    }, (redirectUrl) => {
-      if (chrome.runtime.lastError || !redirectUrl) return;
-      const token = redirectUrl.split('access_token=')[1].split('&')[0];
-      chrome.storage.sync.set({token: token});
-      // ENVIA PARA SUA API AQUI (se quiser)
-      fetch('https://minhaapi.com/auth', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
+    }, redirect => {
+      if (!redirect) return;
+      const token = redirect.split('access_token=')[1].split('&')[0];
+      chrome.storage.sync.set({token});
     });
   }
 
-  if (msg.action === 'logout') {
-    chrome.identity.getAuthToken({interactive: false}, (token) => {
+  if (msg.action === 'realLogout') {
+    chrome.storage.sync.get(['token'], result => {
+      const token = result.token;
       if (token) {
         fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`);
-        chrome.identity.removeCachedAuthToken({token: token});
+        chrome.identity.clearAllCachedAuthTokens();
       }
+      chrome.storage.sync.clear();
+      // força atualização imediata do popup
+      chrome.runtime.sendMessage({action: 'forceRefresh'});
     });
-    chrome.storage.sync.remove(['token']);
   }
+});
+
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg.action === 'forceRefresh') updateUI();
 });
